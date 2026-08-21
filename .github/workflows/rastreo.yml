@@ -18,7 +18,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests cloudscraper fake-useragent
 
       - name: Run script
         run: python bot.py
