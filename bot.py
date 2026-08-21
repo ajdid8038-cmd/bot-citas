@@ -1,6 +1,8 @@
 import time
 import random
 import requests
+import cloudscraper
+from fake_useragent import UserAgent
 
 NIE = "Z4809947P"
 NOMBRE = "TASNIME AJDID"
@@ -9,22 +11,14 @@ CANAL_NTFY = "https://ntfy.sh/citas_ajdid_barcelona"
 
 URL_BASE = "https://sede.administracionespublicas.gob.es/icpplus/"
 
-SESSION = requests.Session()
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://sede.administracionespublicas.gob.es/icpplus/citar?locale=es",
-    "Origin": "https://sede.administracionespublicas.gob.es",
-    "Connection": "keep-alive",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1"
-}
-SESSION.headers.update(HEADERS)
+ua = UserAgent()
+scraper = cloudscraper.create_scraper(
+    browser={
+        'browser': 'chrome',
+        'platform': 'windows',
+        'desktop': True
+    }
+)
 
 def notificar(mensaje, prioridad="default"):
     try:
@@ -34,54 +28,58 @@ def notificar(mensaje, prioridad="default"):
     print(f"\n[ALERTA]: {mensaje}\n")
 
 def comprobar():
-    print(f"[{time.strftime('%H:%M:%S')}] Comprobando citas...")
+    print(f"[{time.strftime('%H:%M:%S')}] Comprobando citas con motor anti-bloqueo...")
     try:
-        # 1. Visitar la portada para obtener cookies de sesión
-        res_inicio = SESSION.get(f"{URL_BASE}citar?locale=es", timeout=20)
+        headers = {
+            "User-Agent": ua.chrome,
+            "Accept-Language": "es-ES,es;q=0.9",
+            "Referer": "https://sede.administracionespublicas.gob.es/icpplus/citar?locale=es"
+        }
         
-        if res_inicio.status_code == 403 or "Access Denied" in res_inicio.text:
-            print("⚠️ Filtro WAF activo en esta IP. Reintentando...")
+        res = scraper.get(f"{URL_BASE}citar?locale=es", headers=headers, timeout=20)
+        
+        if res.status_code == 403 or "Access Denied" in res.text:
+            print("⚠️ Filtro de sede activo. Esperando siguiente salto...")
             return False
 
-        # 2. Seleccionar provincia Barcelona (id 8) y trámite Toma de Huellas
+        # Datos del formulario
         datos_sede = {
             "form": "/icpplus/citar?locale=es",
             "tramiteGrupo[0]": "4036",
             "btnAceptar": "Aceptar"
         }
-        res_sede = SESSION.post(f"{URL_BASE}index.html", data=datos_sede, timeout=20)
+        res_sede = scraper.post(f"{URL_BASE}index.html", data=datos_sede, headers=headers, timeout=20)
 
-        # 3. Enviar datos del solicitante
         datos_persona = {
             "txtIdCitado": NIE,
             "txtDesCitado": NOMBRE,
             "txtPaisNac": PAIS,
             "btnEnviar": "Aceptar"
         }
-        res_persona = SESSION.post(f"{URL_BASE}datos.html", data=datos_persona, timeout=20)
+        res_persona = scraper.post(f"{URL_BASE}datos.html", data=datos_persona, headers=headers, timeout=20)
 
         contenido = res_persona.text.lower()
         if "no hay citas disponibles" in contenido or "en este momento no hay citas" in contenido:
-            print("❌ No hay citas en este intento.")
+            print("❌ No hay citas disponibles actualmente.")
             return False
-        elif "información" in contenido or "solicitar cita" in contenido:
+        elif "cita" in contenido and ("seleccionar" in contenido or "oficina" in contenido):
             notificar("🚨 ¡CITA DISPONIBLE EN EXTRANJERÍA! Entra a la web ya.", "urgent")
             return True
         else:
-            print("ℹ️ Respuesta recibida, analizando...")
+            print("ℹ️ Consulta procesada sin errores de bloqueo.")
             return False
 
     except Exception as e:
         print(f"Error de conexión: {e}")
         return False
 
-print("=== BOT REFORZADO EN GITHUB ===")
-notificar("🟢 Bot activo con bypass de cabeceras.")
+print("=== BOT REFORZADO CON CLOUDSCRAPER ===")
+notificar("🟢 Bot en la nube iniciado con motor avanzado.")
 
 inicio = time.time()
 while time.time() - inicio < 900:
     if comprobar():
         break
-    espera = random.randint(45, 80)
+    espera = random.randint(20, 35)
     print(f"Esperando {espera} segundos...")
     time.sleep(espera)
